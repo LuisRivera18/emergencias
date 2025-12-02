@@ -216,7 +216,7 @@ app.listen(PORT, () => {
     if (leaderUrl && leaderUrl !== selfUrl) {
       try {
         await axios.get(`${leaderUrl}/internal/heartbeat`, { timeout: 2000 });
-      } catch (e) {
+      } catch (e: any) {
         logger.warn("Leader heartbeat failed. Starting election.");
         await bully.startElection();
         if (bully.leaderId && bully.leaderId === nodeId) {
@@ -228,3 +228,4 @@ app.listen(PORT, () => {
   }, 5000);
 
 });
+
