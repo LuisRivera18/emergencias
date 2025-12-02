@@ -1,0 +1,10 @@
+{
+  "nodeId": 1,
+  "selfUrl": "http://10.0.0.11:3000",
+  "peers": ["http://10.0.0.11:3000","http://10.0.0.12:3000","http://10.0.0.13:3000"],
+  "peersInfo": [{"id":1,"url":"http://10.0.0.11:3000"},{"id":2,"url":"http://10.0.0.12:3000"},{"id":3,"url":"http://10.0.0.13:3000"}],
+  "dbFile": "./db.sqlite",
+  "initialLeader": 1,
+  "initialLeaderUrl": "http://10.0.0.11:3000",
+  "port": 3000
+}
