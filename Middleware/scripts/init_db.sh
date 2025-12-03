@@ -1,11 +1,14 @@
 #!/bin/bash
-# desde la carpeta del proyecto
-if [ ! -f schema.sql ]; then
-  echo "Falta schema.sql"
-  exit 1
+set -e
+
+DB_FILE=${1:-"./db.sqlite"}
+SCHEMA_FILE=${2:-"./schema.sql"}
+
+echo "Inicializando BD en $DB_FILE usando $SCHEMA_FILE..."
+if [ -f "$DB_FILE" ]; then
+  echo "El archivo $DB_FILE ya existe. No se recrea (para no borrar datos)."
+  exit 0
 fi
-# crear db (SQLite se crea al acceder)
-node -e "require('./dist/db.js')"
-# simplemente ejecutar schema.sql
-sqlite3 db.sqlite < schema.sql
-echo "DB inicializada"
+
+sqlite3 "$DB_FILE" < "$SCHEMA_FILE"
+echo "BD inicializada."
