@@ -29,8 +29,9 @@ export class DB {
     return this.db.prepare(sql).all(...params);
   }
 
-  transaction(fn: Function) {
+  transaction(fn: (...args: any[]) => any) {
     return this.db.transaction(fn)();
   }
 }
+
 
