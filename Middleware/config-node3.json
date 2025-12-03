@@ -1,0 +1,13 @@
+{
+  "nodeId": 3,
+  "host": "192.168.68.134",
+  "tcpPort": 5003,
+  "peers": [
+    { "id": 1, "host": "192.168.68.132", "tcpPort": 5001 },
+    { "id": 2, "host": "192.168.68.133", "tcpPort": 5002 },
+    { "id": 3, "host": "192.168.68.134", "tcpPort": 5003 }
+  ],
+  "dbFile": "./db.sqlite",
+  "schemaFile": "./schema.sql",
+  "initialLeader": 1
+}
