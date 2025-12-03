@@ -50,7 +50,7 @@ export class ClusterNode {
     const { tcpPort, host, nodeId, peers, initialLeader } = this.config;
 
     this.server.listen(tcpPort, host, () => {
-      console.log(Node ${nodeId} listening on ${host}:${tcpPort});
+      console.log(`Node ${nodeId} listening on ${host}:${tcpPort}`);
     });
 
     // Conectar a peers
@@ -78,7 +78,7 @@ export class ClusterNode {
   private connectToPeer(peer: PeerInfo) {
     const { nodeId } = this.config;
     const socket = net.createConnection(peer.tcpPort, peer.host, () => {
-      console.log(Node ${nodeId} connected to peer ${peer.id});
+      console.log(`Node ${nodeId} connected to peer ${peer.id}`);
       (socket as SocketWithBuffer).buffer = "";
       this.peers.set(peer.id, socket as SocketWithBuffer);
     });
@@ -88,7 +88,7 @@ export class ClusterNode {
     });
 
     socket.on("close", () => {
-      console.log(Connection to peer ${peer.id} closed);
+      console.log(`Connection to peer ${peer.id} closed`);
       this.peers.delete(peer.id);
       setTimeout(() => this.connectToPeer(peer), 3000);
     });
@@ -160,14 +160,14 @@ export class ClusterNode {
     }
     const elapsed = Date.now() - this.lastHeartbeat;
     if (elapsed > 10000) {
-      console.log(Node ${this.config.nodeId} detected leader timeout (${elapsed}ms). Starting election...);
+      console.log(`Node ${this.config.nodeId} detected leader timeout (${elapsed}ms). Starting election...`);
       this.leaderId = null;
       this.startElection();
     }
   }
 
   private startElection() {
-    console.log(Node ${this.config.nodeId} starting election...);
+    console.log(`Node ${this.config.nodeId} starting election...`);
     const higherPeers = this.config.peers.filter((p) => p.id > this.config.nodeId);
     if (higherPeers.length === 0) {
       this.becomeLeader();
@@ -186,7 +186,7 @@ export class ClusterNode {
     this.isLeader = true;
     this.leaderId = this.config.nodeId;
     this.lastHeartbeat = Date.now();
-    console.log(Node ${this.config.nodeId} became LEADER);
+    console.log(`Node ${this.config.nodeId} became LEADER`);
     const msg: NewLeaderMessage = {
       type: "NEW_LEADER",
       fromId: this.config.nodeId,
@@ -200,7 +200,7 @@ export class ClusterNode {
       case "HEARTBEAT":
         if (this.leaderId !== msg.fromId) {
           this.leaderId = msg.fromId;
-          console.log(Node ${this.config.nodeId} now recognizes leader Node ${msg.fromId});
+          console.log(`Node ${this.config.nodeId} now recognizes leader Node ${msg.fromId}`);
         }
         this.lastHeartbeat = Date.now();
         break;
@@ -225,7 +225,7 @@ export class ClusterNode {
         this.isLeader = msg.leaderId === this.config.nodeId;
         this.leaderId = msg.leaderId;
         this.lastHeartbeat = Date.now();
-        console.log(Node ${this.config.nodeId} knows new leader: Node ${msg.leaderId});
+        console.log(`Node ${this.config.nodeId} knows new leader: Node ${msg.leaderId}`);
         break;
 
       case "REPL_OP":
@@ -258,7 +258,7 @@ export class ClusterNode {
         payload: { pacienteId, trabajadorSocialId: trabajadorId, sala }
       };
       this.sendToPeer(this.leaderId, msg);
-      console.log(Node ${this.config.nodeId} forwarded visit creation to leader ${this.leaderId});
+      console.log(`Node ${this.config.nodeId} forwarded visit creation to leader ${this.leaderId}`);
     } else {
       console.log("No leader known, cannot create visit");
     }
@@ -274,7 +274,7 @@ export class ClusterNode {
         payload: { visitId }
       };
       this.sendToPeer(this.leaderId, msg);
-      console.log(Node ${this.config.nodeId} forwarded close-visit to leader ${this.leaderId});
+      console.log(`Node ${this.config.nodeId} forwarded close-visit to leader ${this.leaderId}`);
     } else {
       console.log("No leader known, cannot close visit");
     }
@@ -311,7 +311,7 @@ export class ClusterNode {
 
     const cntRow = this.db.get("SELECT COUNT(*) as c FROM VISITAS WHERE sala = ?", [sala]);
     const consecutivo = (cntRow && cntRow.c) || 1;
-    const folio = ${pacienteId}-${doctor.id}-${sala}-${consecutivo};
+    const folio = `${pacienteId}-${doctor.id}-${sala}-${consecutivo}`;
 
     this.db.transaction(() => {
       this.db.run(
@@ -326,9 +326,9 @@ export class ClusterNode {
       );
     });
 
-    console.log(
+    console.log(`
       Leader ${this.config.nodeId} created visit ${visitId}, doctor=${doctor.id}, cama=${cama.id}, folio=${folio}
-    );
+    `);
 
     const op: ReplOpMessage = {
       type: "REPL_OP",
@@ -355,11 +355,11 @@ export class ClusterNode {
   private closeVisitAsLeader(visitId: number) {
     const v = this.db.get("SELECT * FROM VISITAS WHERE id = ?", [visitId]);
     if (!v) {
-      console.log(Visita ${visitId} no existe);
+      console.log(`Visita ${visitId} no existe`);
       return;
     }
     if (v.estado === "CERRADA") {
-      console.log(Visita ${visitId} ya estaba cerrada);
+      console.log(`Visita ${visitId} ya estaba cerrada`);
       return;
     }
 
@@ -373,7 +373,7 @@ export class ClusterNode {
       );
     });
 
-    console.log(Leader ${this.config.nodeId} closed visit ${visitId});
+    console.log(`Leader ${this.config.nodeId} closed visit ${visitId}`);
 
     const op: ReplOpMessage = {
       type: "REPL_OP",
