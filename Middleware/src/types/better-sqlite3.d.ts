@@ -1,26 +1,19 @@
 declare module "better-sqlite3" {
-  interface RunResult {
-    changes: number;
-    lastInsertRowid: number | bigint;
-  }
+  class Database {
+    constructor(path: string);
 
-  interface Statement {
-    run(...params: any[]): RunResult;
-    get(...params: any[]): any;
-    all(...params: any[]): any[];
-  }
+    prepare(sql: string): {
+      run(...params: any[]): { changes: number; lastInsertRowid: number | bigint };
+      get(...params: any[]): any;
+      all(...params: any[]): any[];
+    };
 
-  interface Database {
-    prepare(sql: string): Statement;
     exec(sql: string): void;
-    transaction(fn: (...params: any[]) => any): (...params: any[]) => any;
+
+    transaction(fn: (...args: any[]) => any): (...args: any[]) => any;
+
     close(): void;
   }
 
-  interface DatabaseConstructor {
-    new (path: string): Database;
-  }
-
-  const BetterSqlite3: DatabaseConstructor;
-  export default BetterSqlite3;
+  export default Database;
 }
