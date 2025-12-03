@@ -65,7 +65,7 @@ export class ClusterNode {
     } else if (initialLeader) {
       this.leaderId = initialLeader;
       this.lastHeartbeat = Date.now();
-      console.log(Node ${nodeId} initial leader is Node ${initialLeader});
+      console.log(`Node ${nodeId} initial leader is Node ${initialLeader}`);
     }
 
     // Heartbeats (en el líder)
