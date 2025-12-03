@@ -28,7 +28,7 @@ const node = new ClusterNode(
   db
 );
 
-console.log(Nodo ${config.nodeId} iniciado. Comandos:);
+console.log(`Nodo ${config.nodeId} iniciado. Comandos:`);
 console.log(`  visit <pacienteId> <trabajadorSocialId> <sala>`);
 console.log(`  close <visitId>`);
 console.log(`  list`);
