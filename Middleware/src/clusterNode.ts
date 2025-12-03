@@ -1,3 +1,4 @@
+// src/clusterNode.ts
 import net from "net";
 import { DB } from "./db";
 import {
@@ -36,6 +37,7 @@ export class ClusterNode {
   private isLeader = false;
   private leaderId: number | null = null;
   private nextOpId = 1;
+  private lastHeartbeat = Date.now();
 
   constructor(config: Config, db: DB) {
     this.config = config;
@@ -51,7 +53,7 @@ export class ClusterNode {
       console.log(Node ${nodeId} listening on ${host}:${tcpPort});
     });
 
-    // Intentar conectar a los otros peers
+    // Conectar a peers
     peers.forEach((p) => {
       if (p.id !== nodeId) {
         this.connectToPeer(p);
@@ -62,11 +64,15 @@ export class ClusterNode {
       this.becomeLeader();
     } else if (initialLeader) {
       this.leaderId = initialLeader;
+      this.lastHeartbeat = Date.now();
       console.log(Node ${nodeId} initial leader is Node ${initialLeader});
     }
 
-    // Heartbeats
+    // Heartbeats (en el líder)
     setInterval(() => this.sendHeartbeat(), 3000);
+
+    // Checar si el líder murió (en followers)
+    setInterval(() => this.checkLeaderTimeout(), 5000);
   }
 
   private connectToPeer(peer: PeerInfo) {
@@ -77,8 +83,8 @@ export class ClusterNode {
       this.peers.set(peer.id, socket as SocketWithBuffer);
     });
 
-    socket.on("error", (err) => {
-      // console.log(Error connecting to peer ${peer.id}: ${err.message});
+    socket.on("error", () => {
+      // silencioso
     });
 
     socket.on("close", () => {
@@ -137,7 +143,7 @@ export class ClusterNode {
   }
 
   private sendHeartbeat() {
-    if (!this.leaderId || !this.isLeader) return;
+    if (!this.isLeader) return;
     const msg: HeartbeatMessage = {
       type: "HEARTBEAT",
       fromId: this.config.nodeId
@@ -145,11 +151,25 @@ export class ClusterNode {
     this.broadcast(msg);
   }
 
+  private checkLeaderTimeout() {
+    if (this.isLeader) return; // yo soy el líder
+    if (!this.leaderId) {
+      // no hay líder conocido, lanzo elección
+      this.startElection();
+      return;
+    }
+    const elapsed = Date.now() - this.lastHeartbeat;
+    if (elapsed > 10000) {
+      console.log(Node ${this.config.nodeId} detected leader timeout (${elapsed}ms). Starting election...);
+      this.leaderId = null;
+      this.startElection();
+    }
+  }
+
   private startElection() {
     console.log(Node ${this.config.nodeId} starting election...);
     const higherPeers = this.config.peers.filter((p) => p.id > this.config.nodeId);
     if (higherPeers.length === 0) {
-      // Soy el más grande
       this.becomeLeader();
       return;
     }
@@ -160,17 +180,12 @@ export class ClusterNode {
     };
 
     higherPeers.forEach((p) => this.sendToPeer(p.id, msg));
-    // En un sistema real habría timeout y escucha de ELECTION_OK; aquí simplificado
-    setTimeout(() => {
-      if (!this.leaderId) {
-        this.becomeLeader();
-      }
-    }, 3000);
   }
 
   private becomeLeader() {
     this.isLeader = true;
     this.leaderId = this.config.nodeId;
+    this.lastHeartbeat = Date.now();
     console.log(Node ${this.config.nodeId} became LEADER);
     const msg: NewLeaderMessage = {
       type: "NEW_LEADER",
@@ -183,11 +198,14 @@ export class ClusterNode {
   private handleMessage(msg: Message, fromPeerId: number) {
     switch (msg.type) {
       case "HEARTBEAT":
-        // si viene heartbeat de otro líder distinto, podrías gestionar conflictos
+        if (this.leaderId !== msg.fromId) {
+          this.leaderId = msg.fromId;
+          console.log(Node ${this.config.nodeId} now recognizes leader Node ${msg.fromId});
+        }
+        this.lastHeartbeat = Date.now();
         break;
 
       case "ELECTION": {
-        // Bully: si yo tengo id mayor, respondo y lanzo mi propia elección
         if (this.config.nodeId > msg.fromId) {
           const reply: ElectionOkMessage = {
             type: "ELECTION_OK",
@@ -200,12 +218,13 @@ export class ClusterNode {
       }
 
       case "ELECTION_OK":
-        // otro mayor está vivo; me quedo esperando NEW_LEADER
+        // En una implementación completa habría lógica para esperar NEW_LEADER
         break;
 
       case "NEW_LEADER":
         this.isLeader = msg.leaderId === this.config.nodeId;
         this.leaderId = msg.leaderId;
+        this.lastHeartbeat = Date.now();
         console.log(Node ${this.config.nodeId} knows new leader: Node ${msg.leaderId});
         break;
 
@@ -214,7 +233,7 @@ export class ClusterNode {
         break;
 
       case "REPL_ACK":
-        // en esta versión simple no guardamos estado esperado por opId
+        // (Simplificado) Podrías contar ACKs aquí si quieres super-consenso explícito
         break;
 
       case "CLIENT_CREATE_VISIT":
@@ -227,7 +246,7 @@ export class ClusterNode {
     }
   }
 
-  // === Lógica de alto nivel usada por CLI ===
+  // ===== API para CLI =====
 
   public clientCreateVisit(pacienteId: number, trabajadorId: number, sala: string) {
     if (this.isLeader) {
@@ -261,7 +280,7 @@ export class ClusterNode {
     }
   }
 
-  // === Handlers de mensajes de cliente en el líder ===
+  // ===== Handlers en el líder =====
 
   private handleClientCreateVisit(msg: ClientCreateVisitMessage) {
     if (!this.isLeader) return;
@@ -274,10 +293,9 @@ export class ClusterNode {
     this.closeVisitAsLeader(msg.payload.visitId);
   }
 
-  // === Lógica de negocio básica ===
+  // ===== Lógica de negocio =====
 
   private createVisitAsLeader(pacienteId: number, trabajadorId: number, sala: string) {
-    // buscar doctor y cama disponibles
     const doctor = this.db.get("SELECT id FROM DOCTORES WHERE disponible = 1 LIMIT 1");
     const cama = this.db.get("SELECT id FROM CAMAS WHERE disponible = 1 LIMIT 1");
     if (!doctor || !cama) {
@@ -285,29 +303,33 @@ export class ClusterNode {
       return;
     }
 
-    // crear visita local + asignar recursos
-    const visitId = this.db.run(
+    const insertResult = this.db.run(
       "INSERT INTO VISITAS (paciente_id, sala, trabajador_social_id, estado, consecutivo) VALUES (?, ?, ?, 'ABIERTA', 0)",
       [pacienteId, sala, trabajadorId]
-    ).lastInsertRowid as number;
+    );
+    const visitId = Number(insertResult.lastInsertRowid);
 
-    const cnt = this.db.get("SELECT COUNT(*) as c FROM VISITAS WHERE sala = ?", [sala]).c as number;
-    const folio = ${pacienteId}-${doctor.id}-${sala}-${cnt};
+    const cntRow = this.db.get("SELECT COUNT(*) as c FROM VISITAS WHERE sala = ?", [sala]);
+    const consecutivo = (cntRow && cntRow.c) || 1;
+    const folio = ${pacienteId}-${doctor.id}-${sala}-${consecutivo};
 
     this.db.transaction(() => {
       this.db.run(
         "UPDATE VISITAS SET doctor_id = ?, cama_id = ?, folio = ?, estado = 'ASIGNADA', consecutivo = ? WHERE id = ?",
-        [doctor.id, cama.id, folio, cnt, visitId]
+        [doctor.id, cama.id, folio, consecutivo, visitId]
       );
       this.db.run("UPDATE DOCTORES SET disponible = 0 WHERE id = ?", [doctor.id]);
       this.db.run("UPDATE CAMAS SET disponible = 0 WHERE id = ?", [cama.id]);
+      this.db.run(
+        "INSERT INTO WAL_LOG (op_type, payload) VALUES (?, ?)",
+        ["assign_visit", JSON.stringify({ visitId, pacienteId, trabajadorId, sala, doctorId: doctor.id, camaId: cama.id, folio, consecutivo })]
+      );
     });
 
     console.log(
       Leader ${this.config.nodeId} created visit ${visitId}, doctor=${doctor.id}, cama=${cama.id}, folio=${folio}
     );
 
-    // replicar a otros nodos
     const op: ReplOpMessage = {
       type: "REPL_OP",
       fromId: this.config.nodeId,
@@ -320,7 +342,7 @@ export class ClusterNode {
           camaId: cama.id,
           folio,
           estado: "ASIGNADA",
-          consecutivo: cnt,
+          consecutivo,
           pacienteId,
           trabajadorId,
           sala
@@ -345,6 +367,10 @@ export class ClusterNode {
       this.db.run("UPDATE VISITAS SET estado='CERRADA', cerrado_en=CURRENT_TIMESTAMP WHERE id = ?", [visitId]);
       if (v.doctor_id) this.db.run("UPDATE DOCTORES SET disponible = 1 WHERE id = ?", [v.doctor_id]);
       if (v.cama_id) this.db.run("UPDATE CAMAS SET disponible = 1 WHERE id = ?", [v.cama_id]);
+      this.db.run(
+        "INSERT INTO WAL_LOG (op_type, payload) VALUES (?, ?)",
+        ["close_visit", JSON.stringify({ visitId, doctorId: v.doctor_id, camaId: v.cama_id })]
+      );
     });
 
     console.log(Leader ${this.config.nodeId} closed visit ${visitId});
@@ -371,7 +397,6 @@ export class ClusterNode {
     if (kind === "assign_visit") {
       const d = data;
       this.db.transaction(() => {
-        // si no existe la visita, crearla
         const v = this.db.get("SELECT * FROM VISITAS WHERE id = ?", [d.visitId]);
         if (!v) {
           this.db.run(
@@ -416,7 +441,6 @@ export class ClusterNode {
     this.sendToPeer(msg.fromId, ack);
   }
 
-  // util: listar visitas (para CLI)
   public listVisits() {
     const rows = this.db.all("SELECT * FROM VISITAS ORDER BY creado_en DESC");
     console.table(rows);
