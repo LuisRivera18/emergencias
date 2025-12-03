@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 
 export class DB {
-  db: Database.Database;
+  db: InstanceType<typeof Database>;
 
   constructor(dbPath: string, schemaSql: string) {
     const needInit = !fs.existsSync(dbPath);
@@ -33,3 +33,4 @@ export class DB {
     return this.db.transaction(fn)();
   }
 }
+
